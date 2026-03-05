@@ -61,7 +61,7 @@ Please verify this Hijri date. Respond in this exact JSON format only:
 }}"""
 
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="models/gemini-2.5-flash",
             contents=prompt,
             config=genai_types.GenerateContentConfig(
                 http_options=genai_types.HttpOptions(timeout=8000),
@@ -105,7 +105,7 @@ Provide Islamic context. Respond in this exact JSON format only:
 }}"""
 
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="models/gemini-2.5-flash",
             contents=prompt,
             config=genai_types.GenerateContentConfig(
                 http_options=genai_types.HttpOptions(timeout=8000),
