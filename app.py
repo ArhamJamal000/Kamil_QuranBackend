@@ -22,7 +22,19 @@ app = Flask(__name__)
 CORS(app)
 
 ALADHAN_BASE = "https://api.aladhan.com/v1"
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+
+# Handle Multiple API Keys
+GEMINI_API_KEYS_ENV = os.getenv("GEMINI_API_KEYS", "")
+if GEMINI_API_KEYS_ENV:
+    GEMINI_API_KEYS = [k.strip() for k in GEMINI_API_KEYS_ENV.split(",") if k.strip()]
+else:
+    single_key = os.getenv("GEMINI_API_KEY", "")
+    GEMINI_API_KEYS = [single_key] if single_key and single_key != "your_key_here" else []
+
+CURRENT_GEMINI_KEY_INDEX = 0
+
+# Simple server-side memory cache for location-based Gemini analysis
+LOCATION_ANALYSIS_CACHE = {}
 
 # ─── Helpers ────────────────────────────────────────────
 
@@ -34,23 +46,54 @@ def aladhan_get(path, params=None):
     return resp.json()
 
 
+def _call_gemini_with_retries(prompt):
+    global CURRENT_GEMINI_KEY_INDEX
+    import google.generativeai as genai
+    
+    attempts = 0
+    max_attempts = len(GEMINI_API_KEYS)
+    
+    while attempts < max_attempts:
+        current_key = GEMINI_API_KEYS[CURRENT_GEMINI_KEY_INDEX]
+        try:
+            genai.configure(api_key=current_key)
+            model = genai.GenerativeModel("models/gemini-2.5-flash")
+            response = model.generate_content(prompt)
+            return response.text.strip()
+        except Exception as e:
+            error_str = str(e).lower()
+            if "429" in error_str or "quota" in error_str or "exhausted" in error_str or "too many requests" in error_str:
+                app.logger.warning(f"Gemini API key index {CURRENT_GEMINI_KEY_INDEX} hit quota/limit. Switching key.")
+                CURRENT_GEMINI_KEY_INDEX = (CURRENT_GEMINI_KEY_INDEX + 1) % len(GEMINI_API_KEYS)
+                attempts += 1
+            else:
+                app.logger.error(f"Gemini API non-quota error: {e}")
+                return None
+                
+    app.logger.error("All Gemini API keys have exhausted their quota.")
+    return None
+
 def gemini_analyze_hijri(aladhan_hijri, city="Mumbai", country="India"):
     """
     Use Gemini to verify a Hijri date AND provide Islamic context in a single call.
     Returns analysis dict or None if Gemini unavailable.
     """
-    if not GEMINI_API_KEY or GEMINI_API_KEY == "your_key_here":
+    global CURRENT_GEMINI_KEY_INDEX
+    if not GEMINI_API_KEYS:
         return None
 
-    try:
-        import google.generativeai as genai
-        genai.configure(api_key=GEMINI_API_KEY)
+    today_str = date.today().strftime('%d %B %Y')
+    cache_key = f"{today_str}_{city}_{country}"
+    
+    if cache_key in LOCATION_ANALYSIS_CACHE:
+        app.logger.info(f"Returning cached Gemini analysis for {city}, {country}")
+        return LOCATION_ANALYSIS_CACHE[cache_key]
 
-        hijri_str = f"{aladhan_hijri['day']} {aladhan_hijri['month']['en']} {aladhan_hijri['year']} AH"
-        prompt = f"""You are an advanced Islamic calendar and moon-sighting expert.
+    hijri_str = f"{aladhan_hijri['day']} {aladhan_hijri['month']['en']} {aladhan_hijri['year']} AH"
+    prompt = f"""You are an advanced Islamic calendar and moon-sighting expert.
 The AlAdhan API calculated today's baseline Hijri date as: {hijri_str}
 City: {city}, {country}
-Today's Gregorian date: {date.today().strftime('%d %B %Y')}
+Today's Gregorian date: {today_str}
 
 CRITICAL INSTRUCTION:
 Do NOT attempt to independently calculate the current Islamic month or year. You MUST accept the Month and Year provided by AlAdhan ({aladhan_hijri['month']['en']} {aladhan_hijri['year']}) as the absolute ground truth. 
@@ -77,19 +120,21 @@ Respond in this exact JSON format only:
     }}
 }}"""
 
-        model = genai.GenerativeModel("models/gemini-2.5-flash")
-        response = model.generate_content(prompt)
-        text = response.text.strip()
+    text = _call_gemini_with_retries(prompt)
+    if not text:
+        return None
         
-        # Extract JSON from response
+    try:
         if "```json" in text:
             text = text.split("```json")[1].split("```")[0].strip()
         elif "```" in text:
             text = text.split("```")[1].split("```")[0].strip()
             
-        return json.loads(text)
+        result = json.loads(text)
+        LOCATION_ANALYSIS_CACHE[cache_key] = result
+        return result
     except Exception as e:
-        app.logger.warning(f"Gemini analysis failed: {e}")
+        app.logger.warning(f"Failed to parse Gemini response: {e}")
         return None
 
 
@@ -245,9 +290,10 @@ def hijri_today():
 
 @app.route("/api/hijri/to-hijri")
 def gregorian_to_hijri():
-    """GET /api/hijri/to-hijri?date=06-03-2026&city=Mumbai&enhance=true"""
+    """GET /api/hijri/to-hijri?date=06-03-2026&city=Mumbai&country=India&enhance=true"""
     date_str = request.args.get("date")  # DD-MM-YYYY
     city = request.args.get("city", "Mumbai")
+    country = request.args.get("country", "India")
     enhance = request.args.get("enhance", "true").lower() == "true"
 
     if not date_str:
@@ -262,9 +308,17 @@ def gregorian_to_hijri():
             "year": hijri["year"],
         }
 
+        # Gemini single request analysis
         gemini_analysis = None
         if enhance:
-            gemini_analysis = gemini_verify_hijri(aladhan_hijri, city)
+            analysis = gemini_analyze_hijri(aladhan_hijri, city, country)
+            if analysis:
+                gemini_analysis = {
+                    "verified_hijri_date": analysis.get("verified_hijri_date"),
+                    "confidence": analysis.get("confidence"),
+                    "note": analysis.get("note"),
+                    "regional_note": analysis.get("regional_note"),
+                }
 
         return jsonify({
             "data": {
@@ -504,7 +558,7 @@ def health():
             "/api/sehri-iftar/monthly",
             "/ping",
         ],
-        "gemini_enabled": bool(GEMINI_API_KEY and GEMINI_API_KEY != "your_key_here"),
+        "gemini_enabled": len(GEMINI_API_KEYS) > 0,
     })
 
 
@@ -517,6 +571,6 @@ def ping():
 if __name__ == "__main__":
     port = 5000
     print("🕌 Islamic Companion API starting...")
-    print(f"   Gemini AI: {'✅ Enabled' if GEMINI_API_KEY and GEMINI_API_KEY != 'your_key_here' else '❌ Disabled (set GEMINI_API_KEY in .env)'}")
+    print(f"   Gemini AI: {'✅ Enabled (' + str(len(GEMINI_API_KEYS)) + ' keys)' if GEMINI_API_KEYS else '❌ Disabled (set GEMINI_API_KEYS in .env)'}")
     print(f"   Server: http://localhost:{port}")
     app.run(host="0.0.0.0", port=port, debug=True)
