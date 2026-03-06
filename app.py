@@ -34,91 +34,54 @@ def aladhan_get(path, params=None):
     return resp.json()
 
 
-def gemini_verify_hijri(aladhan_hijri, city="Mumbai"):
+def gemini_analyze_hijri(aladhan_hijri, city="Mumbai", country="India"):
     """
-    Use Gemini to verify/enhance a Hijri date from AlAdhan.
+    Use Gemini to verify a Hijri date AND provide Islamic context in a single call.
     Returns analysis dict or None if Gemini unavailable.
     """
     if not GEMINI_API_KEY or GEMINI_API_KEY == "your_key_here":
         return None
 
     try:
-        from google import genai
-        from google.genai import types as genai_types
-        client = genai.Client(api_key=GEMINI_API_KEY)
+        import google.generativeai as genai
+        genai.configure(api_key=GEMINI_API_KEY)
 
-        prompt = f"""You are an Islamic date verification expert.
-The AlAdhan API calculated today's Hijri date as: {aladhan_hijri['day']} {aladhan_hijri['month']['en']} {aladhan_hijri['year']} AH
-City: {city}, India
+        hijri_str = f"{aladhan_hijri['day']} {aladhan_hijri['month']['en']} {aladhan_hijri['year']} AH"
+        prompt = f"""You are an advanced Islamic calendar and moon-sighting expert.
+The AlAdhan API calculated today's baseline Hijri date as: {hijri_str}
+City: {city}, {country}
 Today's Gregorian date: {date.today().strftime('%d %B %Y')}
 
-Please verify this Hijri date. Respond in this exact JSON format only:
+CRITICAL INSTRUCTION:
+Do NOT attempt to independently calculate the current Islamic month or year. You MUST accept the Month and Year provided by AlAdhan ({aladhan_hijri['month']['en']} {aladhan_hijri['year']}) as the absolute ground truth. 
+Your ONLY job regarding the date is to adjust the DAY number (e.g., {aladhan_hijri['day']}) by +1, -1, or 0 days based on known regional moon-sighting standard practices for {city}, {country}. Do NOT change the month name.
+
+Please verify this Hijri date and provide Islamic context. 
+Respond in this exact JSON format only:
 {{
     "verified_hijri_date": "DD MonthName YYYY AH",
     "confidence": "high" or "medium" or "low",
-    "note": "brief explanation",
-    "regional_note": "any moon sighting info for this region"
+    "note": "brief explanation of why the day was kept the same or adjusted based on local moon sighting",
+    "regional_note": "any moon sighting info for this region",
+    "islamic_significance": "significance of this date or general info",
+    "upcoming_events": ["list of upcoming Islamic events within 30 days"],
+    "fasting_recommended": true or false,
+    "special_nights": "any special night info or empty string"
 }}"""
 
-        response = client.models.generate_content(
-            model="models/gemini-2.5-flash",
-            contents=prompt,
-            config=genai_types.GenerateContentConfig(
-                http_options=genai_types.HttpOptions(timeout=8000),
-            ),
-        )
+        model = genai.GenerativeModel("models/gemini-2.5-flash")
+        response = model.generate_content(prompt)
         text = response.text.strip()
+        
         # Extract JSON from response
         if "```json" in text:
             text = text.split("```json")[1].split("```")[0].strip()
         elif "```" in text:
             text = text.split("```")[1].split("```")[0].strip()
+            
         return json.loads(text)
     except Exception as e:
-        app.logger.warning(f"Gemini verification failed: {e}")
-        return None
-
-
-def gemini_islamic_context(hijri_date_str, city="Mumbai"):
-    """
-    Use Gemini to provide Islamic context for a date.
-    Returns context dict or None.
-    """
-    if not GEMINI_API_KEY or GEMINI_API_KEY == "your_key_here":
-        return None
-
-    try:
-        from google import genai
-        from google.genai import types as genai_types
-        client = genai.Client(api_key=GEMINI_API_KEY)
-
-        prompt = f"""You are an Islamic calendar expert.
-For the Hijri date: {hijri_date_str}
-City: {city}, India
-
-Provide Islamic context. Respond in this exact JSON format only:
-{{
-    "islamic_significance": "significance of this date or general info",
-    "upcoming_events": ["list of upcoming Islamic events within 30 days"],
-    "fasting_recommended": true/false,
-    "special_nights": "any special night info or empty string"
-}}"""
-
-        response = client.models.generate_content(
-            model="models/gemini-2.5-flash",
-            contents=prompt,
-            config=genai_types.GenerateContentConfig(
-                http_options=genai_types.HttpOptions(timeout=8000),
-            ),
-        )
-        text = response.text.strip()
-        if "```json" in text:
-            text = text.split("```json")[1].split("```")[0].strip()
-        elif "```" in text:
-            text = text.split("```")[1].split("```")[0].strip()
-        return json.loads(text)
-    except Exception as e:
-        app.logger.warning(f"Gemini context failed: {e}")
+        app.logger.warning(f"Gemini analysis failed: {e}")
         return None
 
 
@@ -230,22 +193,38 @@ def hijri_today():
             "year": hijri["year"],
         }
 
-        # Gemini verification (optional)
-        gemini_analysis = gemini_verify_hijri(aladhan_hijri, city)
-        hijri_str = f"{aladhan_hijri['day']} {aladhan_hijri['month']['en']} {aladhan_hijri['year']}"
-        islamic_context = gemini_islamic_context(hijri_str, city)
+        # Gemini single request analysis
+        gemini_analysis = gemini_analyze_hijri(aladhan_hijri, city, country)
+        
+        # Split the single response back into the two expected structures for the frontend
+        verified_data = None
+        context_data = None
+        
+        if gemini_analysis:
+            verified_data = {
+                "verified_hijri_date": gemini_analysis.get("verified_hijri_date"),
+                "confidence": gemini_analysis.get("confidence"),
+                "note": gemini_analysis.get("note"),
+                "regional_note": gemini_analysis.get("regional_note"),
+            }
+            context_data = {
+                "islamic_significance": gemini_analysis.get("islamic_significance"),
+                "upcoming_events": gemini_analysis.get("upcoming_events", []),
+                "fasting_recommended": gemini_analysis.get("fasting_recommended", False),
+                "special_nights": gemini_analysis.get("special_nights"),
+            }
 
         result = {
             "data": {
                 "hijri_date": {
                     "aladhan": aladhan_hijri,
                     "gemini_verified": {
-                        "gemini_analysis": gemini_analysis
-                    } if gemini_analysis else None,
+                        "gemini_analysis": verified_data
+                    } if verified_data else None,
                 },
                 "islamic_context": {
-                    "data": islamic_context
-                } if islamic_context else None,
+                    "data": context_data
+                } if context_data else None,
             }
         }
         return jsonify(result)
