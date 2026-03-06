@@ -56,7 +56,7 @@ CRITICAL INSTRUCTION:
 Do NOT attempt to independently calculate the current Islamic month or year. You MUST accept the Month and Year provided by AlAdhan ({aladhan_hijri['month']['en']} {aladhan_hijri['year']}) as the absolute ground truth. 
 Your ONLY job regarding the date is to adjust the DAY number (e.g., {aladhan_hijri['day']}) by +1, -1, or 0 days based on known regional moon-sighting standard practices for {city}, {country}. Do NOT change the month name.
 
-Please verify this Hijri date and provide Islamic context. 
+Please verify this Hijri date and provide Islamic context, including calculating accurate Namaz timings for the specified city and country.
 Respond in this exact JSON format only:
 {{
     "verified_hijri_date": "DD MonthName YYYY AH",
@@ -66,7 +66,15 @@ Respond in this exact JSON format only:
     "islamic_significance": "significance of this date or general info",
     "upcoming_events": ["list of upcoming Islamic events within 30 days"],
     "fasting_recommended": true or false,
-    "special_nights": "any special night info or empty string"
+    "special_nights": "any special night info or empty string",
+    "namaz_timings": {{
+        "Fajr": "HH:MM AM/PM",
+        "Sunrise": "HH:MM AM/PM",
+        "Dhuhr": "HH:MM AM/PM",
+        "Asr": "HH:MM AM/PM",
+        "Maghrib": "HH:MM AM/PM",
+        "Isha": "HH:MM AM/PM"
+    }}
 }}"""
 
         model = genai.GenerativeModel("models/gemini-2.5-flash")
@@ -212,6 +220,7 @@ def hijri_today():
                 "upcoming_events": gemini_analysis.get("upcoming_events", []),
                 "fasting_recommended": gemini_analysis.get("fasting_recommended", False),
                 "special_nights": gemini_analysis.get("special_nights"),
+                "namaz_timings": gemini_analysis.get("namaz_timings")
             }
 
         result = {
