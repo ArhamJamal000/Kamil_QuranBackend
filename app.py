@@ -83,6 +83,8 @@ def gemini_analyze_hijri(aladhan_hijri, city="Mumbai", country="India"):
         return None
 
     today_str = date.today().strftime('%d %B %Y')
+    # Determine region for moon-sighting context
+    india_pak_region = country.lower() in ('india', 'pakistan', 'bangladesh', 'sri lanka')
     cache_key = f"{today_str}_{city}_{country}"
     
     if cache_key in LOCATION_ANALYSIS_CACHE:
@@ -90,10 +92,26 @@ def gemini_analyze_hijri(aladhan_hijri, city="Mumbai", country="India"):
         return LOCATION_ANALYSIS_CACHE[cache_key]
 
     hijri_str = f"{aladhan_hijri['day']} {aladhan_hijri['month']['en']} {aladhan_hijri['year']} AH"
+    
+    # Build region-specific guidance
+    if india_pak_region:
+        regional_guidance = f"""IMPORTANT REGIONAL CONTEXT:
+The AlAdhan API uses the Saudi Umm al-Qura or similar calendar which is typically 1 day AHEAD of the
+actual moon sighting in India, Pakistan, Bangladesh, and Sri Lanka. For these regions, the Hijri date
+is almost always 1 day BEHIND the Saudi/AlAdhan date because local moon sighting committees (like the
+Central Ruet-e-Hilal Committee or local Qazi committees) typically sight the moon 1 day after Saudi Arabia.
+
+For {city}, {country}: You should almost certainly SUBTRACT 1 day from AlAdhan's date (i.e., adjust by -1).
+Only keep the same date if you have strong evidence that local sighting matched Saudi Arabia this month."""
+    else:
+        regional_guidance = f"Adjust the day based on standard moon-sighting practices for {city}, {country}."
+    
     prompt = f"""You are an advanced Islamic calendar and moon-sighting expert.
 The AlAdhan API calculated today's baseline Hijri date as: {hijri_str}
 City: {city}, {country}
 Today's Gregorian date: {today_str}
+
+{regional_guidance}
 
 CRITICAL INSTRUCTION:
 Do NOT attempt to independently calculate the current Islamic month or year. You MUST accept the Month and Year provided by AlAdhan ({aladhan_hijri['month']['en']} {aladhan_hijri['year']}) as the absolute ground truth. 
@@ -226,9 +244,13 @@ def prayer_by_coords():
 
 @app.route("/api/hijri/today")
 def hijri_today():
-    """GET /api/hijri/today?city=Mumbai&country=India"""
+    """GET /api/hijri/today?city=Mumbai&country=India&adjustment=-1"""
     city = request.args.get("city", "Mumbai")
     country = request.args.get("country", "India")
+    # Accept client-side hijri adjustment (default -1 for India/Pak, 0 otherwise)
+    is_subcontinent = country.lower() in ("india", "pakistan", "bangladesh", "sri lanka")
+    default_adj = "-1" if is_subcontinent else "0"
+    adjustment = int(request.args.get("adjustment", default_adj))
 
     today = date.today()
     try:
@@ -240,11 +262,47 @@ def hijri_today():
             "date_or_timestamp": today.strftime("%d-%m-%Y"),
         })
         hijri = data["data"]["date"]["hijri"]
+        
+        # Apply day adjustment for regions where AlAdhan is typically off
+        raw_day = int(hijri["day"])
+        raw_month = int(hijri["month"]["number"])
+        raw_year = int(hijri["year"])
+        
+        adjusted_day = raw_day + adjustment
+        adjusted_month = raw_month
+        adjusted_year = raw_year
+        
+        # Handle month boundaries (walking backward)
+        if adjusted_day < 1:
+            adjusted_month -= 1
+            if adjusted_month < 1:
+                adjusted_month = 12
+                adjusted_year -= 1
+            # Hijri months alternate 30/29 days (odd=30, even=29, except month 12 in leap years)
+            if adjusted_month % 2 == 1:
+                prev_month_days = 30
+            elif adjusted_month == 12 and ((11 * adjusted_year + 14) % 30) < 11:
+                prev_month_days = 30
+            else:
+                prev_month_days = 29
+            adjusted_day = prev_month_days + adjusted_day  # adjusted_day is negative here
+        
+        # Handle walking forward
+        current_month_days = 30 if raw_month % 2 == 1 else 29
+        if adjusted_day > current_month_days:
+            adjusted_day -= current_month_days
+            adjusted_month += 1
+            if adjusted_month > 12:
+                adjusted_month = 1
+                adjusted_year += 1
+
         aladhan_hijri = {
-            "day": hijri["day"],
+            "day": str(adjusted_day),
             "month": {"en": hijri["month"]["en"], "ar": hijri["month"]["ar"]},
-            "year": hijri["year"],
+            "year": str(adjusted_year),
         }
+        
+        app.logger.info(f"Hijri date for {city}: AlAdhan raw={raw_day}, adjustment={adjustment}, final={adjusted_day} {hijri['month']['en']} {adjusted_year}")
 
         # Gemini single request analysis
         gemini_analysis = gemini_analyze_hijri(aladhan_hijri, city, country)
