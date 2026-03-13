@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kamil Quran - Hijri Date</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Islamic Companion</h1>
+        
+        <div class="date-card">
+            <h2>Hijri Date</h2>
+            <p id="hijriDate">Loading...</p>
+            <p class="source-info">Source: <span id="currentSource">...</span></p>
+        </div>
+
+        <div class="nav-links">
+            <a href="/settings">Settings</a>
+        </div>
+    </div>
+
+    <script>
+        async function fetchAndDisplayHijriDate() {
+            const source = localStorage.getItem('hijriSource') || 'aladhan';
+            const dateElement = document.getElementById('hijriDate');
+            const sourceElement = document.getElementById('currentSource');
+
+            try {
+                const response = await fetch(`/api/hijri-date?source=${source}`);
+                const data = await response.json();
+                
+                if (data.hijri_date) {
+                    dateElement.textContent = data.hijri_date;
+                    sourceElement.textContent = data.source === 'gemini' ? 'Gemini AI Verified' : 'AlAdhan API';
+                } else {
+                    dateElement.textContent = "Error loading date";
+                    sourceElement.textContent = "N/A";
+                }
+            } catch (error) {
+                console.error("Error fetching Hijri date:", error);
+                dateElement.textContent = "Error loading date";
+                sourceElement.textContent = "N/A";
+            }
+        }
+
+        // Call on page load
+        document.addEventListener('DOMContentLoaded', fetchAndDisplayHijriDate);
+    </script>
+</body>
+</html>

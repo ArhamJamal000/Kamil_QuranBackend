@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Kamil Quran</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Settings</h1>
+        
+        <!-- Hijri Date Source Setting -->
+        <div class="setting-item">
+            <div class="setting-label">
+                <span class="setting-title">Hijri Date Source</span>
+                <span class="setting-subtitle">
+                    Choose how the Hijri date is calculated
+                </span>
+            </div>
+            <div class="toggle-group">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="hijriSourceToggle" onchange="onHijriSourceChange(this)">
+                    <span class="slider"></span>
+                </label>
+                <span class="toggle-label" id="hijriSourceLabel">AlAdhan API</span>
+            </div>
+        </div>
+        
+        <div class="nav-links">
+            <a href="/web">Go to Homepage</a>
+        </div>
+    </div>
+
+    <script>
+        // On page load, restore saved preference
+        document.addEventListener('DOMContentLoaded', () => {
+            const saved = localStorage.getItem('hijriSource') || 'aladhan'; // default: aladhan
+            const toggle = document.getElementById('hijriSourceToggle');
+            const label = document.getElementById('hijriSourceLabel');
+            if (saved === 'gemini') {
+                toggle.checked = true;
+                label.textContent = 'Gemini AI Verified';
+            } else {
+                toggle.checked = false;
+                label.textContent = 'AlAdhan API';
+            }
+        });
+
+        function onHijriSourceChange(checkbox) {
+            const label = document.getElementById('hijriSourceLabel');
+            if (checkbox.checked) {
+                localStorage.setItem('hijriSource', 'gemini');
+                label.textContent = 'Gemini AI Verified';
+            } else {
+                localStorage.setItem('hijriSource', 'aladhan');
+                label.textContent = 'AlAdhan API';
+            }
+            // Optionally: trigger a refresh of the displayed Hijri date immediately
+            if (window.opener && window.opener.fetchAndDisplayHijriDate) {
+                window.opener.fetchAndDisplayHijriDate();
+            }
+        }
+    </script>
+</body>
+</html>

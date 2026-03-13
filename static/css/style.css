@@ -1,0 +1,140 @@
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f9f9f9;
+  color: #333;
+  margin: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+.container {
+  background: white;
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  width: 100%;
+  max-width: 400px;
+}
+
+h1 {
+  text-align: center;
+  color: #2c3e50;
+  margin-bottom: 2rem;
+}
+
+.date-card {
+  text-align: center;
+  padding: 1.5rem;
+  background: #f0f4f8;
+  border-radius: 8px;
+  margin-bottom: 2rem;
+}
+
+.date-card h2 {
+  margin-top: 0;
+  font-size: 1.2rem;
+  color: #555;
+}
+
+#hijriDate {
+  font-size: 1.8rem;
+  font-weight: bold;
+  color: #27ae60;
+  margin: 1rem 0;
+}
+
+.source-info {
+  font-size: 0.9rem;
+  color: #777;
+}
+
+.nav-links {
+  text-align: center;
+  margin-top: 1rem;
+}
+
+.nav-links a {
+  color: #3498db;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.nav-links a:hover {
+  text-decoration: underline;
+}
+
+/* Toggle Switch Styles */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 26px;
+}
+
+.toggle-switch input { 
+  opacity: 0; 
+  width: 0; 
+  height: 0; 
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: #ccc;
+  border-radius: 26px;
+  transition: 0.3s;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 20px; width: 20px;
+  left: 3px; bottom: 3px;
+  background-color: white;
+  border-radius: 50%;
+  transition: 0.3s;
+}
+
+input:checked + .slider { 
+  background-color: #4CAF50; 
+}
+
+input:checked + .slider:before { 
+  transform: translateX(24px); 
+}
+
+.setting-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.setting-title { 
+  font-weight: 600; 
+  font-size: 15px; 
+}
+
+.setting-subtitle { 
+  font-size: 12px; 
+  color: #888; 
+  display: block; 
+  margin-top: 2px; 
+}
+
+.toggle-group { 
+  display: flex; 
+  align-items: center; 
+  gap: 10px; 
+}
+
+.toggle-label { 
+  font-size: 13px; 
+  color: #555; 
+  min-width: 120px; 
+  text-align: right; 
+}

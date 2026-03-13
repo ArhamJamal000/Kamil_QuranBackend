@@ -12,7 +12,7 @@ import json
 from datetime import datetime, date
 
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from dotenv import load_dotenv
 
@@ -20,6 +20,9 @@ load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
+
+from routes.hijri import hijri_bp
+app.register_blueprint(hijri_bp)
 
 ALADHAN_BASE = "https://api.aladhan.com/v1"
 
@@ -618,6 +621,16 @@ def health():
         ],
         "gemini_enabled": len(GEMINI_API_KEYS) > 0,
     })
+
+
+@app.route("/settings")
+def settings_page():
+    return render_template("settings.html")
+
+
+@app.route("/web")
+def index_page():
+    return render_template("index.html")
 
 
 @app.route("/ping")
